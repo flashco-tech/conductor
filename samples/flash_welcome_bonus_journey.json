@@ -1,0 +1,97 @@
+{
+  "name": "FlashWelcomeBonusJourney",
+  "description": "This journey will check if a new FlashID is created and will announce it's completion via SQS",
+  "version": 1,
+  "tasks": [
+    {
+      "name": "get_user_profile",
+      "taskReferenceName": "get_user_profile_details_ref",
+      "inputParameters": {
+        "http_request": {
+          "uri": "http://localhost:8081/v2/user/profile?customerId=${workflow.input.customerId}",
+          "method": "GET"
+        }
+      },
+      "type": "HTTP"
+    },
+    {
+      "name": "check_profile_matches_flash_id",
+      "taskReferenceName": "check_profile_matches_flash_id_ref",
+      "type": "INLINE",
+      "inputParameters": {
+        "flashIdFromInput": "${workflow.input.flashId}",
+        "customerUuidFromInput": "${workflow.input.customerUuid}",
+        "flashIdFromDB": "${get_user_profile_details_ref.output.flashId}",
+        "customerUuidFromDB": "${get_user_profile_details_ref.output.customerUuid}",
+        "evaluatorType": "javascript",
+        "expression": "function scriptCheckFlashID(){if ($.flashIdFromInput === $.flashIdFromDB && $.customerUuidFromInput === $.customerUuidFromDB){ return true; } else { return  false }} scriptCheckFlashID();"
+      }
+    },
+    {
+      "name": "switch_task_decision",
+      "taskReferenceName": "switch_task_decision_ref",
+      "inputParameters": {
+        "matches": "${check_profile_matches_flash_id_ref.output.result}"
+      },
+      "type": "SWITCH",
+      "evaluatorType": "javascript",
+      "expression": "$.matches == 'true' ? 'announce_journey_completion' : 'terminate'",
+      "defaultCase": [
+        {
+          "name": "terminate_task_default",
+          "taskReferenceName": "terminate_task_default_ref",
+          "inputParameters": {
+            "terminationStatus": "COMPLETED"
+          },
+          "type": "TERMINATE",
+          "startDelay": 0,
+          "optional": false
+        }
+      ],
+      "decisionCases": {
+        "announce_journey_completion": [
+          {
+            "name": "announce_journey_completion",
+            "taskReferenceName": "announce_journey_completion_ref",
+            "inputParameters": {
+              "http_request": {
+                "uri": "http://localhost:8081/v1/customer/${workflow.input.customerId}/journey",
+                "method": "PUT",
+                "body": {
+                  "customerId": "${workflow.input.customerId}",
+                  "workflowId": "${workflow.input.workflowId}",
+                  "journeyId": "${workflow.input.journeyId}"
+                }
+              }
+            },
+            "type": "HTTP"
+          }
+
+        ],
+        "terminate": [
+          {
+            "name": "terminate_task",
+            "taskReferenceName": "terminate_task_ref",
+            "inputParameters": {
+              "terminationStatus": "COMPLETED"
+            },
+            "type": "TERMINATE",
+            "startDelay": 0,
+            "optional": false
+          }
+        ]
+      }
+    }
+  ],
+  "inputParameters": [],
+  "outputParameters": {
+    "data": "${get_population_data.output.response.body.data}",
+    "source": "${get_population_data.output.response.body.source}"
+  },
+  "schemaVersion": 2,
+  "restartable": true,
+  "workflowStatusListenerEnabled": false,
+  "ownerEmail": "aniket@flash.tech",
+  "timeoutPolicy": "ALERT_ONLY",
+  "timeoutSeconds": 0
+}
