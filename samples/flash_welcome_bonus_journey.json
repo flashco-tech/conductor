@@ -1,7 +1,10 @@
 {
+  "createTime": 1701779230870,
+  "updateTime": 1701784125749,
+  "accessPolicy": {},
   "name": "FlashWelcomeBonusJourney",
   "description": "This journey will check if a new FlashID is created and will announce it's completion via SQS",
-  "version": 1,
+  "version": 5,
   "tasks": [
     {
       "name": "get_user_profile",
@@ -12,20 +15,26 @@
           "method": "GET"
         }
       },
-      "type": "HTTP"
+      "type": "HTTP",
+      "startDelay": 0,
+      "optional": false,
+      "asyncComplete": false
     },
     {
       "name": "check_profile_matches_flash_id",
       "taskReferenceName": "check_profile_matches_flash_id_ref",
-      "type": "INLINE",
       "inputParameters": {
         "flashIdFromInput": "${workflow.input.flashId}",
         "customerUuidFromInput": "${workflow.input.customerUuid}",
-        "flashIdFromDB": "${get_user_profile_details_ref.output.flashId}",
-        "customerUuidFromDB": "${get_user_profile_details_ref.output.customerUuid}",
+        "flashIdFromDB": "${get_user_profile_details_ref.output.response.body.flashId}",
+        "customerUuidFromDB": "${get_user_profile_details_ref.output.response.body.customerUuid}",
         "evaluatorType": "javascript",
         "expression": "function scriptCheckFlashID(){if ($.flashIdFromInput === $.flashIdFromDB && $.customerUuidFromInput === $.customerUuidFromDB){ return true; } else { return  false }} scriptCheckFlashID();"
-      }
+      },
+      "type": "INLINE",
+      "startDelay": 0,
+      "optional": false,
+      "asyncComplete": false
     },
     {
       "name": "switch_task_decision",
@@ -34,20 +43,6 @@
         "matches": "${check_profile_matches_flash_id_ref.output.result}"
       },
       "type": "SWITCH",
-      "evaluatorType": "javascript",
-      "expression": "$.matches == 'true' ? 'announce_journey_completion' : 'terminate'",
-      "defaultCase": [
-        {
-          "name": "terminate_task_default",
-          "taskReferenceName": "terminate_task_default_ref",
-          "inputParameters": {
-            "terminationStatus": "COMPLETED"
-          },
-          "type": "TERMINATE",
-          "startDelay": 0,
-          "optional": false
-        }
-      ],
       "decisionCases": {
         "announce_journey_completion": [
           {
@@ -64,9 +59,11 @@
                 }
               }
             },
-            "type": "HTTP"
+            "type": "HTTP",
+            "startDelay": 0,
+            "optional": false,
+            "asyncComplete": false
           }
-
         ],
         "terminate": [
           {
@@ -77,21 +74,41 @@
             },
             "type": "TERMINATE",
             "startDelay": 0,
-            "optional": false
+            "optional": false,
+            "asyncComplete": false
           }
         ]
-      }
+      },
+      "defaultCase": [
+        {
+          "name": "terminate_task_default",
+          "taskReferenceName": "terminate_task_default_ref",
+          "inputParameters": {
+            "terminationStatus": "COMPLETED"
+          },
+          "type": "TERMINATE",
+          "startDelay": 0,
+          "optional": false,
+          "asyncComplete": false
+        }
+      ],
+      "startDelay": 0,
+      "optional": false,
+      "asyncComplete": false,
+      "evaluatorType": "javascript",
+      "expression": "($.matches || $.matches === true || $.matches == 'true' || $.matches == true) ? 'announce_journey_completion' : 'terminate'"
     }
   ],
   "inputParameters": [],
   "outputParameters": {
-    "data": "${get_population_data.output.response.body.data}",
-    "source": "${get_population_data.output.response.body.source}"
+    "journeyConditionResult": "${check_profile_matches_flash_id_ref.output.result}"
   },
   "schemaVersion": 2,
   "restartable": true,
   "workflowStatusListenerEnabled": false,
   "ownerEmail": "aniket@flash.tech",
   "timeoutPolicy": "ALERT_ONLY",
-  "timeoutSeconds": 0
+  "timeoutSeconds": 0,
+  "variables": {},
+  "inputTemplate": {}
 }
