@@ -1,0 +1,121 @@
+{
+  "createTime": 1701876660119,
+  "updateTime": 1701877591815,
+  "accessPolicy": {},
+  "name": "n_orders_journey_workflow",
+  "description": "This WF will update the journey order count and if it reaches a milestone, announces it.",
+  "version": 2,
+  "tasks": [
+    {
+      "name": "get_challenge_order_count_http_task",
+      "taskReferenceName": "get_challenge_order_count_http_task_ref",
+      "inputParameters": {
+        "http_request": {
+          "uri": "http://localhost:8081/v1/customer/${workflow.input.customerId}/journey/${workflow.input.journeyId}",
+          "method": "GET"
+        }
+      },
+      "type": "HTTP",
+      "startDelay": 0,
+      "optional": false,
+      "asyncComplete": false
+    },
+    {
+      "name": "increment_order_count_by_one",
+      "taskReferenceName": "increment_order_count_by_one_ref",
+      "inputParameters": {
+        "expression": "(function(){ return parseInt($.oldOrderCount) + 1;})();",
+        "evaluatorType": "javascript",
+        "old_order_count": "${get_challenge_order_count_http_task_ref.output}"
+      },
+      "type": "INLINE",
+      "startDelay": 0,
+      "optional": false,
+      "asyncComplete": false
+    },
+    {
+      "name": "update_journey_order_count_http_task",
+      "taskReferenceName": "update_journey_order_count_http_task_ref",
+      "inputParameters": {
+        "http_request": {
+          "uri": "http://localhost:8081/v1/customer/${workflow.input.customerId}/journey/${workflow.input.journeyId}",
+          "method": "PUT",
+          "body": {
+            "customerId": "${workflow.input.customerId}",
+            "workflowId": "${workflow.input.workflowId}",
+            "journeyId": "${workflow.input.journeyId}",
+            "meta": {
+              "count": "${increment_order_count_by_one_ref.output.value}"
+            }
+          }
+        }
+      },
+      "type": "HTTP",
+      "startDelay": 0,
+      "optional": false,
+      "asyncComplete": false
+    },
+    {
+      "name": "is_milestone_order_switch_task",
+      "taskReferenceName": "is_milestone_order_switch_task_ref",
+      "inputParameters": {
+        "orderCount": "${increment_order_count_by_one_ref.output.value}"
+      },
+      "type": "SWITCH",
+      "decisionCases": {
+        "milestone_order": [
+          {
+            "name": "announce_milestone_http_task",
+            "taskReferenceName": "announce_milestone_http_task_ref",
+            "inputParameters": {
+              "http_request": {
+                "uri": "http://localhost:8081/v1/announce",
+                "method": "POST",
+                "connectionTimeOut": 3000,
+                "readTimeOut": "3000",
+                "accept": "application/json",
+                "contentType": "application/json",
+                "body": {
+                  "workflowId": "${workflow.input.workflowId}",
+                  "journeyId": "${workflow.input.journeyId}",
+                  "meta": {
+                    "count": "${increment_order_count_by_one_ref.output.value}"
+                  }
+                }
+              },
+              "startDelay": 0,
+              "optional": false,
+              "asyncComplete": false
+            },
+            "type": "HTTP",
+            "startDelay": 0,
+            "optional": false,
+            "asyncComplete": false
+          }
+        ]
+      },
+      "startDelay": 0,
+      "optional": false,
+      "asyncComplete": false,
+      "evaluatorType": "javascript",
+      "expression": "function isMilestoneOrder() {\n  var orderCount = parseInt($.orderCount);\n  var milestones = [5, 10, 15, 25, 50, 100];\n  if (milestones.indexOf(orderCount) !== -1) {\n    return 'milestone_order';\n  }\n  return 'non_milestone_order';\n}"
+    }
+  ],
+  "inputParameters": [
+    "workflowId",
+    "customerId",
+    "journeyId"
+  ],
+  "outputParameters": {
+    "finalOrderCount": "${increment_order_count_by_one_ref.output.value}"
+  },
+  "failureWorkflow": "",
+  "schemaVersion": 2,
+  "restartable": true,
+  "workflowStatusListenerEnabled": false,
+  "ownerEmail": "aniket@flash.tech",
+  "timeoutPolicy": "ALERT_ONLY",
+  "timeoutSeconds": 30,
+  "variables": {},
+  "inputTemplate": {}
+}
