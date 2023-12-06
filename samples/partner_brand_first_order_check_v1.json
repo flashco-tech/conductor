@@ -1,0 +1,218 @@
+{
+  "createTime": 1701862538515,
+  "accessPolicy": {},
+  "name": "FirstTransactionOnEveryPartnerMerchant",
+  "description": "This WF will announce if 1st txn is performed on a partner merchant",
+  "version": 1,
+  "tasks": [
+    {
+      "name": "get_partner_merchant_list",
+      "taskReferenceName": "get_partner_merchant_list_ref",
+      "inputParameters": {
+        "http_request": {
+          "uri": "http://localhost:8081/v1/merchants?partner=true",
+          "method": "GET"
+        }
+      },
+      "type": "HTTP",
+      "startDelay": 0,
+      "optional": false,
+      "asyncComplete": false
+    },
+    {
+      "name": "partner_merchant_switch_task_decision",
+      "taskReferenceName": "partner_merchant_switch_task_decision_ref",
+      "inputParameters": {
+        "email_sender": "${workflow.input.email_sender}",
+        "email_provider": "${workflow.input.email_provider}",
+        "partner_merchant_list": "${get_partner_merchant_list_ref.output.response.body.response}"
+      },
+      "type": "SWITCH",
+      "decisionCases": {
+        "partner_brand": [
+          {
+            "name": "get_user_journey_data",
+            "taskReferenceName": "get_user_journey_data_ref",
+            "inputParameters": {
+              "http_request": {
+                "uri": "http://localhost:8081/v2/user/${workflow.input.customerId}/journey/${workflow.input.journeyId}",
+                "method": "GET"
+              }
+            },
+            "type": "HTTP",
+            "startDelay": 0,
+            "optional": false,
+            "asyncComplete": false
+          },
+          {
+            "name": "brand_order_count_switch_task_decision",
+            "taskReferenceName": "brand_order_count_switch_task_decision_ref",
+            "inputParameters": {
+              "meta": "${get_user_journey_data_ref.output.response.body.response.meta}",
+              "email_sender": "${workflow.input.email_sender}"
+            },
+            "type": "SWITCH",
+            "decisionCases": {
+              "first_order": [
+                {
+                  "name": "add_brand_in_meta",
+                  "taskReferenceName": "add_brand_in_meta_ref",
+                  "inputParameters": {
+                    "meta": "${get_user_journey_data_ref.output.response.body.response.meta}",
+                    "email_sender": "${workflow.input.email_sender}",
+                    "evaluatorType": "javascript",
+                    "expression": "function updateMeta(){ var oldMeta = $.meta; oldMeta[$.email_sender] = 1; return oldMeta;} updateMeta();"
+                  },
+                  "type": "INLINE",
+                  "startDelay": 0,
+                  "optional": false,
+                  "asyncComplete": false
+                },
+                {
+                  "name": "update_journey_with_first_count",
+                  "taskReferenceName": "update_journey_with_first_count_ref",
+                  "inputParameters": {
+                    "http_request": {
+                      "uri": "http://localhost:8081/v1/customer/${workflow.input.customerId}/journey",
+                      "method": "PUT",
+                      "body": {
+                        "customerId": "${workflow.input.customerId}",
+                        "workflowId": "${workflow.input.workflowId}",
+                        "journeyId": "${workflow.input.journeyId}",
+                        "meta": "${add_brand_in_meta_ref.output.result}"
+                      }
+                    }
+                  },
+                  "type": "HTTP",
+                  "startDelay": 0,
+                  "optional": false,
+                  "asyncComplete": false
+                },
+                {
+                  "name": "announce_first_order_completion",
+                  "taskReferenceName": "announce_first_order_completion_ref",
+                  "inputParameters": {
+                    "http_request": {
+                      "uri": "http://localhost:8081/v1/customer/${workflow.input.customerId}/journey",
+                      "method": "PUT",
+                      "body": {
+                        "customerId": "${workflow.input.customerId}",
+                        "workflowId": "${workflow.input.workflowId}",
+                        "journeyId": "${workflow.input.journeyId}",
+                        "meta": {
+                          "email_sender": "${workflow.input.email_sender}"
+                        }
+                      }
+                    }
+                  },
+                  "type": "HTTP",
+                  "startDelay": 0,
+                  "optional": false,
+                  "asyncComplete": false
+                }
+              ],
+              "non_first_order": [
+                {
+                  "name": "update_brand_count_in_meta",
+                  "taskReferenceName": "update_brand_count_in_meta_ref",
+                  "inputParameters": {
+                    "meta": "${get_user_journey_data_ref.output.response.body.response.meta}",
+                    "email_sender": "${workflow.input.email_sender}",
+                    "evaluatorType": "javascript",
+                    "expression": "function updateCountInMeta(){ var oldMeta = $.meta; var oldCount = oldMeta[$.email_sender]; var newCount = oldCount + 1; oldMeta[$.email_sender] = newCount; return oldMeta;} updateCountInMeta();"
+                  },
+                  "type": "INLINE",
+                  "startDelay": 0,
+                  "optional": false,
+                  "asyncComplete": false
+                },
+                {
+                  "name": "update_journey_with_new_count",
+                  "taskReferenceName": "update_journey_with_new_count_ref",
+                  "inputParameters": {
+                    "http_request": {
+                      "uri": "http://localhost:8081/v1/customer/${workflow.input.customerId}/journey",
+                      "method": "PUT",
+                      "body": {
+                        "customerId": "${workflow.input.customerId}",
+                        "workflowId": "${workflow.input.workflowId}",
+                        "journeyId": "${workflow.input.journeyId}",
+                        "meta": "${get_user_journey_data_ref.output.response.body.response.meta}"
+                      }
+                    }
+                  },
+                  "type": "HTTP",
+                  "startDelay": 0,
+                  "optional": false,
+                  "asyncComplete": false
+                }
+              ]
+            },
+            "defaultCase": [
+              {
+                "name": "terminate_task_order_count_check_default",
+                "taskReferenceName": "terminate_task_order_count_check_default_ref",
+                "inputParameters": {
+                  "terminationStatus": "COMPLETED"
+                },
+                "type": "TERMINATE",
+                "startDelay": 0,
+                "optional": false,
+                "asyncComplete": false
+              }
+            ],
+            "startDelay": 0,
+            "optional": false,
+            "asyncComplete": false,
+            "evaluatorType": "javascript",
+            "expression": "function checkOrderCountInMeta() { if($.meta[$.email_sender] === undefined || $.meta[$.email_sender] < 1) {return 'first_order'} return 'non_first_order';}"
+          }
+        ],
+        "non_partner_brand": [
+          {
+            "name": "terminate_task",
+            "taskReferenceName": "terminate_task_ref",
+            "inputParameters": {
+              "terminationStatus": "COMPLETED"
+            },
+            "type": "TERMINATE",
+            "startDelay": 0,
+            "optional": false,
+            "asyncComplete": false
+          }
+        ]
+      },
+      "defaultCase": [
+        {
+          "name": "terminate_task_partner_check_default",
+          "taskReferenceName": "terminate_task_partner_check_ref",
+          "inputParameters": {
+            "terminationStatus": "COMPLETED"
+          },
+          "type": "TERMINATE",
+          "startDelay": 0,
+          "optional": false,
+          "asyncComplete": false
+        }
+      ],
+      "startDelay": 0,
+      "optional": false,
+      "asyncComplete": false,
+      "evaluatorType": "javascript",
+      "expression": "function isPartnerBrand() { var parterBrandList = $.partner_merchant_list; var emailSender = $.email_sender; for(var i=0; i<parterBrandList.length; i++) { if(parterBrandList[i]['id'] === emailSender ) { return 'partner_brand'; } } return 'non_partner_brand'; } isPartnerBrand();"
+    }
+  ],
+  "inputParameters": [],
+  "outputParameters": {
+    "data": "${get_population_data.output.response.body.data}",
+    "source": "${get_population_data.output.response.body.source}"
+  },
+  "schemaVersion": 2,
+  "restartable": true,
+  "workflowStatusListenerEnabled": false,
+  "ownerEmail": "aniket@flash.tech",
+  "timeoutPolicy": "ALERT_ONLY",
+  "timeoutSeconds": 0,
+  "variables": {},
+  "inputTemplate": {}
+}
